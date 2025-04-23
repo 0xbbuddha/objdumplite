@@ -9,7 +9,6 @@
 #include <sys/stat.h>
 #include <getopt.h>
 
-// Flags pour les différentes options
 typedef struct {
     int show_file_header;      // -h option
     int show_help;             // --help option
@@ -81,7 +80,6 @@ int main(int argc, char *argv[]) {
     options_t opts = {0};  // Initialize all options to 0
     int c;
     
-    // Structure for long options
     static struct option long_options[] = {
         {"help", no_argument, 0, 0},
         {0, 0, 0, 0}
@@ -89,7 +87,6 @@ int main(int argc, char *argv[]) {
     
     int option_index = 0;
     
-    // Parse command line options
     while ((c = getopt_long(argc, argv, "h", long_options, &option_index)) != -1) {
         switch (c) {
             case 0:
@@ -109,25 +106,21 @@ int main(int argc, char *argv[]) {
         }
     }
     
-    // Show help and exit if requested
     if (opts.show_help) {
         print_usage(argv[0]);
         return 0;
     }
     
-    // Check if a filename was provided
     if (optind >= argc) {
         fprintf(stderr, "Error: Expected a filename\n");
         print_usage(argv[0]);
         return 1;
     }
     
-    // If no specific options were provided, default to showing file header
     if (!opts.show_file_header) {
         opts.show_file_header = 1; // Default behavior like objdump
     }
     
-    // Open the file
     const char *filename = argv[optind];
     int fd = open(filename, O_RDONLY);
     if (fd == -1) {
@@ -149,7 +142,6 @@ int main(int argc, char *argv[]) {
         return 1;
     }
     
-    // Check if the file is an ELF file
     Elf64_Ehdr *ehdr = (Elf64_Ehdr *)file_data;
     if (memcmp(ehdr->e_ident, ELFMAG, SELFMAG) != 0) {
         fprintf(stderr, "Error: Not an ELF file: %s\n", filename);
@@ -158,10 +150,8 @@ int main(int argc, char *argv[]) {
         return 1;
     }
     
-    // Print file information
     printf("\n%s:     file format elf64-x86-64\n\n", filename);
     
-    // Display the ELF header if requested
     if (opts.show_file_header) {
         print_elf_header(ehdr);
     }
