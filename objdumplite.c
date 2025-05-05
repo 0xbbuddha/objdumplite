@@ -35,7 +35,7 @@ void afficher_entete_elf(Elf64_Ehdr *ehdr) {
     } else {
         printf("  Données:                           Invalide\n");
     }
-
+    
     printf("  Version:                           %d\n", ehdr->e_ident[EI_VERSION]);
     printf("  OS/ABI:                            %d\n", ehdr->e_ident[EI_OSABI]);
     printf("  Type:                              %d\n", ehdr->e_type);
@@ -45,53 +45,54 @@ void afficher_entete_elf(Elf64_Ehdr *ehdr) {
 
 const char *type_section(uint32_t type) {
     switch (type) {
-        case SHT_NULL:      return "NULL";
-        case SHT_PROGBITS:  return "PROGBITS";
-        case SHT_SYMTAB:    return "SYMTAB";
-        case SHT_STRTAB:    return "STRTAB";
-        case SHT_RELA:      return "RELA";
-        case SHT_HASH:      return "HASH";
-        case SHT_DYNAMIC:   return "DYNAMIC";
-        case SHT_NOTE:      return "NOTE";
-        case SHT_NOBITS:    return "NOBITS";
-        case SHT_REL:       return "REL";
-        case SHT_SHLIB:     return "SHLIB";
-        case SHT_DYNSYM:    return "DYNSYM";
-        default:            return "AUTRE";
+        case SHT_NULL: return "NULL";
+        case SHT_PROGBITS: return "PROGBITS";
+        case SHT_SYMTAB: return "SYMTAB";
+        case SHT_STRTAB: return "STRTAB";
+        case SHT_RELA: return "RELA";
+        case SHT_HASH: return "HASH";
+        case SHT_DYNAMIC: return "DYNAMIC";
+        case SHT_NOTE: return "NOTE";
+        case SHT_NOBITS: return "NOBITS";
+        case SHT_REL: return "REL";
+        case SHT_SHLIB: return "SHLIB";
+        case SHT_DYNSYM: return "DYNSYM";
+        default: return "AUTRE";
     }
 }
 
-void afficher_sections(Elf64_Ehdr *ehdr, void *data) {
-    Elf64_Shdr *sections = (Elf64_Shdr *)((char *)data + ehdr->e_shoff);
-    int nb_sections = ehdr->e_shnum;
-    int index_strtab = ehdr->e_shstrndx;
+void afficher_sections(int fd, Elf64_Ehdr *ehdr) {
+    Elf64_Shdr *sections = malloc(ehdr->e_shentsize * ehdr->e_shnum);
+    if (!sections) {
+        perror("malloc");
+        return;
+    }
 
-    const char *shstrtab = (const char *)data + sections[index_strtab].sh_offset;
+    lseek(fd, ehdr->e_shoff, SEEK_SET);
+    read(fd, sections, ehdr->e_shentsize * ehdr->e_shnum);
 
-    printf("\nNombre de sections : %d\n", nb_sections);
+    Elf64_Shdr strtab_hdr = sections[ehdr->e_shstrndx];
+    char *shstrtab = malloc(strtab_hdr.sh_size);
+    lseek(fd, strtab_hdr.sh_offset, SEEK_SET);
+    read(fd, shstrtab, strtab_hdr.sh_size);
+
+    printf("\nNombre de sections : %d\n", ehdr->e_shnum);
     printf("Sections:\n");
     printf("  [Index] Nom                 Type       Offset     Taille\n");
 
-    for (int i = 0; i < nb_sections; i++) {
-        const char *nom_section = shstrtab + sections[i].sh_name;
-        const char *type = type_section(sections[i].sh_type);
-
-        printf("  [%2d]    %-18s %-10s 0x%08lx 0x%08lx\n", 
-               i, nom_section, type,
+    for (int i = 0; i < ehdr->e_shnum; i++) {
+        printf("  [%2d]    %-18s %-10s 0x%08lx 0x%08lx\n",
+               i, shstrtab + sections[i].sh_name, type_section(sections[i].sh_type),
                (unsigned long)sections[i].sh_offset,
                (unsigned long)sections[i].sh_size);
     }
+
+    free(sections);
+    free(shstrtab);
 }
 
 int main(int argc, char *argv[]) {
     int afficher_header = 0;
-
-    if (argc < 2) {
-        fprintf(stderr, "Erreur : fichier manquant.\n");
-        afficher_aide(argv[0]);
-        return 1;
-    }
-
     const char *fichier = NULL;
 
     for (int i = 1; i < argc; i++) {
@@ -113,42 +114,25 @@ int main(int argc, char *argv[]) {
 
     int fd = open(fichier, O_RDONLY);
     if (fd < 0) {
-        perror("Erreur à l'ouverture du fichier");
-        exit(EXIT_FAILURE);
+        perror("open");
         return 1;
     }
 
-    struct stat st;
-    if (fstat(fd, &st) < 0) {
-        perror("Erreur stat");
-        exit(EXIT_FAILURE);
-        close(fd);
-        return 1;
-    }
+    Elf64_Ehdr ehdr;
+    read(fd, &ehdr, sizeof(ehdr));
 
-    void *data = mmap(NULL, st.st_size, PROT_READ, MAP_PRIVATE, fd, 0);
-    if (data == MAP_FAILED) {
-        perror("Erreur mmap");
-        exit(EXIT_FAILURE);
-        close(fd);
-        return 1;
-    }
-
-    Elf64_Ehdr *ehdr = (Elf64_Ehdr *)data;
-    if (memcmp(ehdr->e_ident, ELFMAG, SELFMAG) != 0) {
+    if (memcmp(ehdr.e_ident, ELFMAG, SELFMAG) != 0) {
         fprintf(stderr, "Ce fichier n'est pas un ELF valide.\n");
-        munmap(data, st.st_size);
         close(fd);
         return 1;
     }
 
     printf("\n%s : format elf64-x86-64\n\n", fichier);
     if (afficher_header || argc == 2) {
-        afficher_entete_elf(ehdr);
-        afficher_sections(ehdr, data);
+        afficher_entete_elf(&ehdr);
+        afficher_sections(fd, &ehdr);
     }
 
-    munmap(data, st.st_size);
     close(fd);
     return 0;
 }
