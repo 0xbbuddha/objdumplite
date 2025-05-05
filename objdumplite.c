@@ -90,7 +90,10 @@ void afficher_sections(int fd, Elf64_Ehdr *ehdr) {
 
     for (int i = 0; i < ehdr->e_shnum; i++) {
         printf("  [%2d]    %-18s %-10s 0x%08lx 0x%08lx\n",
-               i, shstrtab + sections[i].sh_name, type_section(sections[i].sh_type), (unsigned long)sections[i].sh_offset, (unsigned long)sections[i].sh_size);
+               i,
+               shstrtab + sections[i].sh_name, type_section(sections[i].sh_type),
+               (unsigned long)sections[i].sh_offset,
+               (unsigned long)sections[i].sh_size);
     }
 
     free(sections);
