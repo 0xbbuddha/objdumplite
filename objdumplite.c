@@ -35,12 +35,20 @@ void afficher_entete_elf(Elf64_Ehdr *ehdr) {
     } else {
         printf("  Données:                           Invalide\n");
     }
-    
-    printf("  Version:                           %d\n", ehdr->e_ident[EI_VERSION]);
+
+    printf("  Version:                           0x%d\n", ehdr->e_ident[EI_VERSION]);
     printf("  OS/ABI:                            %d\n", ehdr->e_ident[EI_OSABI]);
     printf("  Type:                              %d\n", ehdr->e_type);
     printf("  Machine:                           %d\n", ehdr->e_machine);
     printf("  Entrée point:                      0x%lx\n", (unsigned long)ehdr->e_entry);
+    printf("  Offset des Program Headers:        0x%lx\n", (unsigned long)ehdr->e_phoff);
+    printf("  Offset des Section Headers:        0x%lx\n", (unsigned long)ehdr->e_shoff);
+    printf("  Flags processeur:                  0x%x\n", ehdr->e_flags);
+    printf("  Taille de l'en-tête ELF:           %d (octets)\n", ehdr->e_ehsize);
+    printf("  Taille d'une entrée programme:     %d (octets)\n", ehdr->e_phentsize);
+    printf("  Nombre d'entrées programme:        %d\n", ehdr->e_phnum);
+    printf("  Taille d'une entrée section:       %d (octets)\n", ehdr->e_shentsize);
+    printf("  Index de la table des noms de section: %d\n", ehdr->e_shstrndx);
 }
 
 const char *type_section(uint32_t type) {
@@ -65,7 +73,7 @@ void afficher_sections(int fd, Elf64_Ehdr *ehdr) {
     Elf64_Shdr *sections = malloc(ehdr->e_shentsize * ehdr->e_shnum);
     if (!sections) {
         perror("malloc");
-        return;
+        exit(EXIT_FAILURE);
     }
 
     lseek(fd, ehdr->e_shoff, SEEK_SET);
@@ -82,9 +90,7 @@ void afficher_sections(int fd, Elf64_Ehdr *ehdr) {
 
     for (int i = 0; i < ehdr->e_shnum; i++) {
         printf("  [%2d]    %-18s %-10s 0x%08lx 0x%08lx\n",
-               i, shstrtab + sections[i].sh_name, type_section(sections[i].sh_type),
-               (unsigned long)sections[i].sh_offset,
-               (unsigned long)sections[i].sh_size);
+               i, shstrtab + sections[i].sh_name, type_section(sections[i].sh_type), (unsigned long)sections[i].sh_offset, (unsigned long)sections[i].sh_size);
     }
 
     free(sections);
@@ -115,7 +121,7 @@ int main(int argc, char *argv[]) {
     int fd = open(fichier, O_RDONLY);
     if (fd < 0) {
         perror("open");
-        return 1;
+        exit(EXIT_FAILURE);
     }
 
     Elf64_Ehdr ehdr;
