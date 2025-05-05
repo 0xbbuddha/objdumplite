@@ -21,10 +21,21 @@ void afficher_entete_elf(Elf64_Ehdr *ehdr) {
     for (int i = 0; i < EI_NIDENT; i++) printf("%02x ", ehdr->e_ident[i]);
     printf("\n");
 
-    printf("  Classe:                            %s\n", 
-           ehdr->e_ident[EI_CLASS] == ELFCLASS64 ? "ELF64" : "Invalide");
-    printf("  Données:                           %s\n",
-           ehdr->e_ident[EI_DATA] == ELFDATA2LSB ? "Little Endian" : "Big Endian");
+    if (ehdr->e_ident[EI_CLASS] == ELFCLASS32) {
+        printf("  Classe:                            ELF32\n");
+    } else if (ehdr->e_ident[EI_CLASS] == ELFCLASS64) {
+        printf("  Classe:                            ELF64\n");
+    } else {
+        printf("  Classe:                            Invalide\n");
+    }
+    if (ehdr->e_ident[EI_DATA] == ELFDATA2LSB) {
+        printf("  Données:                           Little Endian (LSB)\n");
+    } else if (ehdr->e_ident[EI_DATA] == ELFDATA2MSB) {
+        printf("  Données:                           Big Endian (MSB)\n");
+    } else {
+        printf("  Données:                           Invalide\n");
+    }
+
     printf("  Version:                           %d\n", ehdr->e_ident[EI_VERSION]);
     printf("  OS/ABI:                            %d\n", ehdr->e_ident[EI_OSABI]);
     printf("  Type:                              %d\n", ehdr->e_type);
@@ -83,7 +94,6 @@ int main(int argc, char *argv[]) {
 
     const char *fichier = NULL;
 
-    // Analyse des arguments
     for (int i = 1; i < argc; i++) {
         if (!strcmp(argv[i], "--help")) {
             afficher_aide(argv[0]);
@@ -104,12 +114,14 @@ int main(int argc, char *argv[]) {
     int fd = open(fichier, O_RDONLY);
     if (fd < 0) {
         perror("Erreur à l'ouverture du fichier");
+        exit(EXIT_FAILURE);
         return 1;
     }
 
     struct stat st;
     if (fstat(fd, &st) < 0) {
         perror("Erreur stat");
+        exit(EXIT_FAILURE);
         close(fd);
         return 1;
     }
@@ -117,6 +129,7 @@ int main(int argc, char *argv[]) {
     void *data = mmap(NULL, st.st_size, PROT_READ, MAP_PRIVATE, fd, 0);
     if (data == MAP_FAILED) {
         perror("Erreur mmap");
+        exit(EXIT_FAILURE);
         close(fd);
         return 1;
     }
