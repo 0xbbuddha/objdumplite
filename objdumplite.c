@@ -4,7 +4,6 @@
 #include <unistd.h>
 #include <fcntl.h>
 #include <errno.h>
-#include <sys/mman.h>
 #include <sys/stat.h>
 #include <elf.h>
 
@@ -17,7 +16,7 @@
 #define RESET   "\033[0m"
 
 void afficher_aide() {
-    printf("Usage: %s [options] <fichier>\n");
+    printf("Usage: [options] <fichier>\n");
     printf("Options:\n");
     printf("  -h           Afficher l'en-tête du fichier ELF\n");
     printf("  --help       Afficher ce message d'aide\n");
