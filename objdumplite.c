@@ -8,6 +8,14 @@
 #include <sys/stat.h>
 #include <elf.h>
 
+#define RED     "\033[31m"
+#define GREEN   "\033[32m"
+#define YELLOW  "\033[33m"
+#define BLUE    "\033[34m"
+#define MAGENTA "\033[35m"
+#define CYAN    "\033[36m"
+#define RESET   "\033[0m"
+
 void afficher_aide() {
     printf("Usage: %s [options] <fichier>\n");
     printf("Options:\n");
@@ -35,9 +43,33 @@ void afficher_entete_elf(Elf64_Ehdr *ehdr) {
     } else {
         printf("  Données:                           Invalide\n");
     }
-
     printf("  Version:                           0x%d\n", ehdr->e_ident[EI_VERSION]);
-    printf("  OS/ABI:                            %d\n", ehdr->e_ident[EI_OSABI]);
+    const char *osabi_str;
+    switch (ehdr->e_ident[EI_OSABI]) {
+        case ELFOSABI_SYSV: osabi_str = "UNIX System V (default)";
+            break;
+        case ELFOSABI_HPUX: osabi_str = "HP-UX";
+            break;
+        case ELFOSABI_NETBSD: osabi_str = "NetBSD";
+            break;
+        case ELFOSABI_LINUX: osabi_str = "Linux";
+            break;
+        case ELFOSABI_SOLARIS: osabi_str = "Solaris";
+            break;
+        case ELFOSABI_IRIX: osabi_str = "IRIX";
+            break;
+        case ELFOSABI_FREEBSD: osabi_str = "FreeBSD";
+            break;
+        case ELFOSABI_TRU64: osabi_str = "TRU64 UNIX";
+            break;
+        case ELFOSABI_ARM: osabi_str = "ARM";
+            break;
+        case ELFOSABI_STANDALONE: osabi_str = "Stand-alone (embedded)";
+            break;
+        default: osabi_str = "Inconnu";
+            break;
+    }
+    printf("  OS/ABI:                            %s\n", osabi_str);
     printf("  Type:                              %d\n", ehdr->e_type);
     printf("  Machine:                           %d\n", ehdr->e_machine);
     printf("  Entrée point:                      0x%lx\n", (unsigned long)ehdr->e_entry);
@@ -84,12 +116,12 @@ void afficher_sections(int fd, Elf64_Ehdr *ehdr) {
     lseek(fd, strtab_hdr.sh_offset, SEEK_SET);
     read(fd, shstrtab, strtab_hdr.sh_size);
 
-    printf("\nNombre de sections : %d\n", ehdr->e_shnum);
-    printf("Sections:\n");
-    printf("  [Index] Nom                 Type       Offset     Taille\n");
-
+    printf(GREEN "\nNombre de sections : %d\n" RESET, ehdr->e_shnum);
+    printf(YELLOW "Sections:\n" RESET);
+    printf(CYAN "  [Index] Nom                 Type       Offset     Taille\n" RESET);
+    
     for (int i = 0; i < ehdr->e_shnum; i++) {
-        printf("  [%2d]    %-18s %-10s 0x%08lx 0x%08lx\n",
+        printf("  [%2d]    %-18s %-10s " MAGENTA "0x%08lx " BLUE "0x%08lx\n" RESET,
                i,
                shstrtab + sections[i].sh_name,
                type_section(sections[i].sh_type),
