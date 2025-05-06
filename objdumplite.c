@@ -8,8 +8,8 @@
 #include <sys/stat.h>
 #include <elf.h>
 
-void afficher_aide(const char *nom_prog) {
-    printf("Usage: %s [options] <fichier>\n", nom_prog);
+void afficher_aide() {
+    printf("Usage: %s [options] <fichier>\n");
     printf("Options:\n");
     printf("  -h           Afficher l'en-tête du fichier ELF\n");
     printf("  --help       Afficher ce message d'aide\n");
@@ -91,7 +91,8 @@ void afficher_sections(int fd, Elf64_Ehdr *ehdr) {
     for (int i = 0; i < ehdr->e_shnum; i++) {
         printf("  [%2d]    %-18s %-10s 0x%08lx 0x%08lx\n",
                i,
-               shstrtab + sections[i].sh_name, type_section(sections[i].sh_type),
+               shstrtab + sections[i].sh_name,
+               type_section(sections[i].sh_type),
                (unsigned long)sections[i].sh_offset,
                (unsigned long)sections[i].sh_size);
     }
@@ -106,7 +107,7 @@ int main(int argc, char *argv[]) {
 
     for (int i = 1; i < argc; i++) {
         if (!strcmp(argv[i], "--help")) {
-            afficher_aide(argv[0]);
+            afficher_aide();
             return 0;
         } else if (!strcmp(argv[i], "-h")) {
             afficher_header = 1;
@@ -117,7 +118,7 @@ int main(int argc, char *argv[]) {
 
     if (!fichier) {
         fprintf(stderr, "Erreur : fichier manquant.\n");
-        afficher_aide(argv[0]);
+        afficher_aide();
         return 1;
     }
 
