@@ -39,6 +39,8 @@ void afficher_entete_elf(Elf64_Ehdr *ehdr) {
         printf("  Données:                           Little Endian (LSB)\n");
     } else if (ehdr->e_ident[EI_DATA] == ELFDATA2MSB) {
         printf("  Données:                           Big Endian (MSB)\n");
+    } else if (ehdr->e_ident[EI_DATA] == ELFDATANONE) {
+        printf("  Données:                           Inconnu\n");
     } else {
         printf("  Données:                           Invalide\n");
     }
@@ -111,9 +113,9 @@ void afficher_sections(int fd, Elf64_Ehdr *ehdr) {
     read(fd, sections, ehdr->e_shentsize * ehdr->e_shnum);
 
     Elf64_Shdr strtab_hdr = sections[ehdr->e_shstrndx];
-    char *shstrtab = malloc(strtab_hdr.sh_size);
+    char *table_des_noms_de_sections = malloc(strtab_hdr.sh_size);
     lseek(fd, strtab_hdr.sh_offset, SEEK_SET);
-    read(fd, shstrtab, strtab_hdr.sh_size);
+    read(fd, table_des_noms_de_sections, strtab_hdr.sh_size);
 
     printf(GREEN "\nNombre de sections : %d\n" RESET, ehdr->e_shnum);
     printf(YELLOW "Sections:\n" RESET);
@@ -122,14 +124,14 @@ void afficher_sections(int fd, Elf64_Ehdr *ehdr) {
     for (int i = 0; i < ehdr->e_shnum; i++) {
         printf("  [%2d]    %-18s %-10s " MAGENTA "0x%08lx " BLUE "0x%08lx\n" RESET,
                i,
-               shstrtab + sections[i].sh_name,
+               table_des_noms_de_sections + sections[i].sh_name,
                type_section(sections[i].sh_type),
                (unsigned long)sections[i].sh_offset,
                (unsigned long)sections[i].sh_size);
     }
 
     free(sections);
-    free(shstrtab);
+    free(table_des_noms_de_sections);
 }
 
 int main(int argc, char *argv[]) {
@@ -168,7 +170,7 @@ int main(int argc, char *argv[]) {
         return 1;
     }
 
-    printf("\n%s : format elf64-x86-64\n\n", fichier);
+    printf("\n%s : format elf64\n\n", fichier);
     if (afficher_header || argc == 2) {
         afficher_entete_elf(&ehdr);
         afficher_sections(fd, &ehdr);
