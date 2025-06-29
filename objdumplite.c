@@ -1,23 +1,79 @@
-#include "objdumplite.h"
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <unistd.h>
+#include <fcntl.h>
+#include <errno.h>
+#include <sys/stat.h>
+#include <elf.h>
 
-/**
- * @brief Affiche l'aide du programme.
- */
-void print_help() {
-    printf("Usage: objdumplite [options] <fichier>\n");
-    printf("Affiche des informations sur les fichiers objets au format ELF.\n\n");
+#define RED     "\033[31m"
+#define GREEN   "\033[32m"
+#define YELLOW  "\033[33m"
+#define BLUE    "\033[34m"
+#define MAGENTA "\033[35m"
+#define CYAN    "\033[36m"
+#define RESET   "\033[0m"
+
+void afficher_aide() {
+    printf("Usage: [options] <fichier>\n");
     printf("Options:\n");
-    printf("  -h, --header     Afficher l'en-tête du fichier ELF.\n");
-    printf("  --help           Afficher ce message d'aide.\n");
+    printf("  -h           Afficher l'en-tête du fichier ELF\n");
+    printf("  --help       Afficher ce message d'aide\n");
 }
 
-/**
- * @brief Récupère le nom correspondant à un type de section ELF.
- * 
- * @param type Le type de la section (ex: SHT_PROGBITS).
- * @return const char* Le nom du type de section sous forme de chaîne de caractères.
- */
-const char *get_section_type_name(uint32_t type) {
+void afficher_entete_elf(Elf64_Ehdr *ehdr) {
+    printf("ELF Header:\n");
+    printf("  Magic:   ");
+    for (int i = 0; i < EI_NIDENT; i++) printf("%02x ", ehdr->e_ident[i]);
+    printf("\n");
+
+    if (ehdr->e_ident[EI_CLASS] == ELFCLASS32) {
+        printf("  Classe:                            ELF32\n");
+    } else if (ehdr->e_ident[EI_CLASS] == ELFCLASS64) {
+        printf("  Classe:                            ELF64\n");
+    } else {
+        printf("  Classe:                            Invalide\n");
+    }
+    if (ehdr->e_ident[EI_DATA] == ELFDATA2LSB) {
+        printf("  Données:                           Little Endian (LSB)\n");
+    } else if (ehdr->e_ident[EI_DATA] == ELFDATA2MSB) {
+        printf("  Données:                           Big Endian (MSB)\n");
+    } else if (ehdr->e_ident[EI_DATA] == ELFDATANONE) {
+        printf("  Données:                           Inconnu\n");
+    } else {
+        printf("  Données:                           Invalide\n");
+    }
+    printf("  Version:                           0x%d\n", ehdr->e_ident[EI_VERSION]);
+    const char *osabi_str;
+    switch (ehdr->e_ident[EI_OSABI]) {
+        case ELFOSABI_SYSV: osabi_str = "UNIX System V (default)"; break;
+        case ELFOSABI_HPUX: osabi_str = "HP-UX"; break;
+        case ELFOSABI_NETBSD: osabi_str = "NetBSD"; break;
+        case ELFOSABI_LINUX: osabi_str = "Linux"; break;
+        case ELFOSABI_SOLARIS: osabi_str = "Solaris"; break;
+        case ELFOSABI_IRIX: osabi_str = "IRIX"; break;
+        case ELFOSABI_FREEBSD: osabi_str = "FreeBSD"; break;
+        case ELFOSABI_TRU64: osabi_str = "TRU64 UNIX"; break;
+        case ELFOSABI_ARM: osabi_str = "ARM"; break;
+        case ELFOSABI_STANDALONE: osabi_str = "Stand-alone (embedded)"; break;
+        default: osabi_str = "Inconnu"; break;
+    }
+    printf("  OS/ABI:                            %s\n", osabi_str);
+    printf("  Type:                              %d\n", ehdr->e_type);
+    printf("  Machine:                           %d\n", ehdr->e_machine);
+    printf("  Entrée point:                      0x%lx\n", (unsigned long)ehdr->e_entry);
+    printf("  Offset des Program Headers:        0x%lx\n", (unsigned long)ehdr->e_phoff);
+    printf("  Offset des Section Headers:        0x%lx\n", (unsigned long)ehdr->e_shoff);
+    printf("  Flags processeur:                  0x%x\n", ehdr->e_flags);
+    printf("  Taille de l'en-tête ELF:           %d (octets)\n", ehdr->e_ehsize);
+    printf("  Taille d'une entrée programme:     %d (octets)\n", ehdr->e_phentsize);
+    printf("  Nombre d'entrées programme:        %d\n", ehdr->e_phnum);
+    printf("  Taille d'une entrée section:       %d (octets)\n", ehdr->e_shentsize);
+    printf("  Index de la table des noms de section: %d\n", ehdr->e_shstrndx);
+}
+
+const char *type_section(uint32_t type) {
     switch (type) {
         case SHT_NULL: return "NULL";
         case SHT_PROGBITS: return "PROGBITS";
@@ -31,228 +87,84 @@ const char *get_section_type_name(uint32_t type) {
         case SHT_REL: return "REL";
         case SHT_SHLIB: return "SHLIB";
         case SHT_DYNSYM: return "DYNSYM";
-        default: return "UNKNOWN";
+        default: return "AUTRE";
     }
 }
 
-/**
- * @brief Affiche les informations de l'en-tête du fichier ELF.
- * 
- * @param elf_file Un pointeur vers la structure contenant les données du fichier ELF.
- */
-void print_elf_header(elf_file_t *elf_file) {
-    Elf64_Ehdr *hdr = &elf_file->header;
-
-    printf(YELLOW "ELF Header:\n" RESET);
-    printf(CYAN "  Magic:   " RESET);
-    for (int i = 0; i < EI_NIDENT; i++) {
-        printf("%02x ", hdr->e_ident[i]);
-    }
-    printf("\n");
-
-    // Classe de l'architecture (32 ou 64 bits)
-    printf(CYAN "  Class:                             " RESET);
-    switch(hdr->e_ident[EI_CLASS]) {
-        case ELFCLASS32: printf("ELF32\n"); break;
-        case ELFCLASS64: printf("ELF64\n"); break;
-        default: printf("Invalid class\n"); break;
+void afficher_sections(int fd, Elf64_Ehdr *ehdr) {
+    Elf64_Shdr *sections = malloc(ehdr->e_shentsize * ehdr->e_shnum);
+    if (!sections) {
+        perror("malloc");
+        exit(EXIT_FAILURE);
     }
 
-    // Endianness (ordre des octets)
-    printf(CYAN "  Data:                              " RESET);
-    switch(hdr->e_ident[EI_DATA]) {
-        case ELFDATA2LSB: printf("2's complement, little endian\n"); break;
-        case ELFDATA2MSB: printf("2's complement, big endian\n"); break;
-        default: printf("Invalid data encoding\n"); break;
-    }
+    lseek(fd, ehdr->e_shoff, SEEK_SET);
+    read(fd, sections, ehdr->e_shentsize * ehdr->e_shnum);
 
-    printf(CYAN "  Version:                           " RESET "%d (current)\n", hdr->e_ident[EI_VERSION]);
+    Elf64_Shdr strtab_hdr = sections[ehdr->e_shstrndx];
+    char *table_des_noms_de_sections = malloc(strtab_hdr.sh_size);
+    lseek(fd, strtab_hdr.sh_offset, SEEK_SET);
+    read(fd, table_des_noms_de_sections, strtab_hdr.sh_size);
 
-    // OS/ABI
-    printf(CYAN "  OS/ABI:                            " RESET);
-    switch(hdr->e_ident[EI_OSABI]) {
-        case ELFOSABI_SYSV:       printf("UNIX - System V\n"); break;
-        case ELFOSABI_HPUX:       printf("HP-UX\n"); break;
-        case ELFOSABI_NETBSD:     printf("NetBSD\n"); break;
-        case ELFOSABI_LINUX:      printf("Linux\n"); break;
-        case ELFOSABI_SOLARIS:    printf("Solaris\n"); break;
-        case ELFOSABI_IRIX:       printf("IRIX\n"); break;
-        case ELFOSABI_FREEBSD:    printf("FreeBSD\n"); break;
-        case ELFOSABI_TRU64:      printf("TRU64 UNIX\n"); break;
-        case ELFOSABI_ARM:        printf("ARM\n"); break;
-        case ELFOSABI_STANDALONE: printf("Standalone App\n"); break;
-        default:                  printf("Unknown OS/ABI\n"); break;
-    }
+    printf(GREEN "\nNombre de sections : %d\n" RESET, ehdr->e_shnum);
+    printf(YELLOW "Sections:\n" RESET);
+    printf(CYAN "  [Index] Nom                 Type       Offset     Taille\n" RESET);
     
-    printf(CYAN "  ABI Version:                       " RESET "%d\n", hdr->e_ident[EI_ABIVERSION]);
-    
-    // Type du fichier objet
-    printf(CYAN "  Type:                              " RESET);
-    switch(hdr->e_type) {
-        case ET_NONE:   printf("NONE (Unknown type)\n"); break;
-        case ET_REL:    printf("REL (Relocatable file)\n"); break;
-        case ET_EXEC:   printf("EXEC (Executable file)\n"); break;
-        case ET_DYN:    printf("DYN (Shared object file)\n"); break;
-        case ET_CORE:   printf("CORE (Core file)\n"); break;
-        default:        printf("Unknown type\n"); break;
-    }
-
-    printf(CYAN "  Machine:                           " RESET "%d\n", hdr->e_machine); // On pourrait mapper vers des noms
-    printf(CYAN "  Version:                           " RESET "0x%x\n", hdr->e_version);
-    printf(CYAN "  Entry point address:               " RESET MAGENTA "0x%lx\n" RESET, hdr->e_entry);
-    printf(CYAN "  Start of program headers:          " RESET "%ld (bytes into file)\n", hdr->e_phoff);
-    printf(CYAN "  Start of section headers:          " RESET "%ld (bytes into file)\n", hdr->e_shoff);
-    printf(CYAN "  Flags:                             " RESET "0x%x\n", hdr->e_flags);
-    printf(CYAN "  Size of this header:               " RESET "%d (bytes)\n", hdr->e_ehsize);
-    printf(CYAN "  Size of program headers:           " RESET "%d (bytes)\n", hdr->e_phentsize);
-    printf(CYAN "  Number of program headers:         " RESET "%d\n", hdr->e_phnum);
-    printf(CYAN "  Size of section headers:           " RESET "%d (bytes)\n", hdr->e_shentsize);
-    printf(CYAN "  Number of section headers:         " RESET "%d\n", hdr->e_shnum);
-    printf(CYAN "  Section header string table index: " RESET "%d\n", hdr->e_shstrndx);
-}
-
-/**
- * @brief Affiche les informations sur les sections du fichier ELF.
- * 
- * @param elf_file Un pointeur vers la structure contenant les données du fichier ELF.
- */
-void print_elf_sections(elf_file_t *elf_file) {
-    printf(GREEN "\nIl y a %d en-têtes de section, commençant à l'adresse 0x%lx:\n" RESET,
-           elf_file->header.e_shnum, elf_file->header.e_shoff);
-
-    printf(YELLOW "En-têtes de section:\n" RESET);
-    printf(CYAN "  [Nr] Nom                Type               Adresse          Offset\n" RESET);
-    printf(CYAN "       Taille             EntSize            Flags  Link  Info  Align\n" RESET);
-
-    for (int i = 0; i < elf_file->header.e_shnum; i++) {
-        Elf64_Shdr *shdr = &elf_file->sections[i];
-        printf("  [%2d] %-17s " BLUE "%-18s" RESET " " MAGENTA "%016lx" RESET " %08lx\n",
+    for (int i = 0; i < ehdr->e_shnum; i++) {
+        printf("  [%2d]    %-18s %-10s " MAGENTA "0x%08lx " BLUE "0x%08lx\n" RESET,
                i,
-               elf_file->section_names + shdr->sh_name,
-               get_section_type_name(shdr->sh_type),
-               shdr->sh_addr,
-               shdr->sh_offset);
-        printf("       " MAGENTA "%016lx %016lx " RESET "%5ld %6d %5d %5ld\n",
-               shdr->sh_size,
-               shdr->sh_entsize,
-               shdr->sh_flags,
-               shdr->sh_link,
-               shdr->sh_info,
-               shdr->sh_addralign);
+               table_des_noms_de_sections + sections[i].sh_name,
+               type_section(sections[i].sh_type),
+               (unsigned long)sections[i].sh_offset,
+               (unsigned long)sections[i].sh_size);
     }
+
+    free(sections);
+    free(table_des_noms_de_sections);
 }
 
-/**
- * @brief Point d'entrée du programme.
- * 
- * @param argc Nombre d'arguments de la ligne de commande.
- * @param argv Tableau des arguments de la ligne de commande.
- * @return int Code de sortie du programme.
- */
 int main(int argc, char *argv[]) {
-    const char *filename = NULL;
-    int show_header = 0;
-    ssize_t bytes_read = 0;
+    int afficher_header = 0;
+    const char *fichier = NULL;
 
-    // Analyse simple des arguments
     for (int i = 1; i < argc; i++) {
-        if (strcmp(argv[i], "--help") == 0) {
-            print_help();
-            return EXIT_SUCCESS;
-        } else if (strcmp(argv[i], "-h") == 0 || strcmp(argv[i], "--header") == 0) {
-            show_header = 1;
+        if (!strcmp(argv[i], "--help")) {
+            afficher_aide();
+            return 0;
+        } else if (!strcmp(argv[i], "-h")) {
+            afficher_header = 1;
         } else if (argv[i][0] != '-') {
-            filename = argv[i];
+            fichier = argv[i];
         }
     }
 
-    if (!filename) {
-        fprintf(stderr, RED "Erreur: nom de fichier manquant.\n" RESET);
-        print_help();
-        return EXIT_FAILURE;
+    if (!fichier) {
+        fprintf(stderr, "Erreur : fichier manquant.\n");
+        afficher_aide();
+        return 1;
     }
 
-    elf_file_t elf_file = {0};
-    elf_file.fd = open(filename, O_RDONLY);
-    if (elf_file.fd < 0) {
-        perror(RED "Erreur lors de l'ouverture du fichier" RESET);
-        return EXIT_FAILURE;
+    int fd = open(fichier, O_RDONLY);
+    if (fd < 0) {
+        perror("open");
+        exit(EXIT_FAILURE);
     }
 
-    // Lire l'en-tête ELF
-    bytes_read = read(elf_file.fd, &elf_file.header, sizeof(Elf64_Ehdr));
-    if (bytes_read != sizeof(Elf64_Ehdr)) {
-        fprintf(stderr, RED "Erreur: Impossible de lire l'en-tête ELF.\n" RESET);
-        close(elf_file.fd);
-        return EXIT_FAILURE;
+    Elf64_Ehdr ehdr;
+    read(fd, &ehdr, sizeof(ehdr));
+
+    if (memcmp(ehdr.e_ident, ELFMAG, SELFMAG) != 0) {
+        fprintf(stderr, "Ce fichier n'est pas un ELF valide.\n");
+        close(fd);
+        return 1;
     }
 
-    // Vérifier le "nombre magique" pour s'assurer que c'est un fichier ELF
-    if (memcmp(elf_file.header.e_ident, ELFMAG, SELFMAG) != 0) {
-        fprintf(stderr, RED "Erreur: Ce n'est pas un fichier au format ELF.\n" RESET);
-        close(elf_file.fd);
-        return EXIT_FAILURE;
-    }
-    
-    // Pour la simplicité, on ne gère que le 64-bit pour le moment
-    if (elf_file.header.e_ident[EI_CLASS] != ELFCLASS64) {
-        fprintf(stderr, RED "Erreur: Seuls les fichiers ELF 64-bit sont supportés par cette version.\n" RESET);
-        close(elf_file.fd);
-        return EXIT_FAILURE;
+    printf("\n%s : format elf64\n\n", fichier);
+    if (afficher_header || argc == 2) {
+        afficher_entete_elf(&ehdr);
+        afficher_sections(fd, &ehdr);
     }
 
-    // Allouer de la mémoire pour les en-têtes de section
-    elf_file.sections = malloc(elf_file.header.e_shentsize * elf_file.header.e_shnum);
-    if (!elf_file.sections) {
-        perror(RED "Erreur d'allocation mémoire pour les sections" RESET);
-        close(elf_file.fd);
-        return EXIT_FAILURE;
-    }
-    
-    // Se déplacer au début des en-têtes de section et les lire
-    lseek(elf_file.fd, elf_file.header.e_shoff, SEEK_SET);
-    size_t sections_size = (size_t)elf_file.header.e_shentsize * elf_file.header.e_shnum;
-    bytes_read = read(elf_file.fd, elf_file.sections, sections_size);
-    if (bytes_read < 0 || (size_t)bytes_read != sections_size) {
-        fprintf(stderr, RED "Erreur: Impossible de lire les en-têtes de section.\n" RESET);
-        free(elf_file.sections);
-        close(elf_file.fd);
-        return EXIT_FAILURE;
-    }
-
-    // Lire la table des noms de section
-    Elf64_Shdr *shstrtab = &elf_file.sections[elf_file.header.e_shstrndx];
-    elf_file.section_names = malloc(shstrtab->sh_size);
-    if (!elf_file.section_names) {
-        perror(RED "Erreur d'allocation mémoire pour les noms de section" RESET);
-        free(elf_file.sections);
-        close(elf_file.fd);
-        return EXIT_FAILURE;
-    }
-    lseek(elf_file.fd, shstrtab->sh_offset, SEEK_SET);
-    bytes_read = read(elf_file.fd, elf_file.section_names, shstrtab->sh_size);
-    if (bytes_read < 0 || (size_t)bytes_read != shstrtab->sh_size) {
-        fprintf(stderr, RED "Erreur: Impossible de lire les noms des sections.\n" RESET);
-        free(elf_file.section_names);
-        free(elf_file.sections);
-        close(elf_file.fd);
-        return EXIT_FAILURE;
-    }
-
-    // Afficher les informations demandées
-    printf("\nFichier : %s\n", filename);
-    if (show_header) {
-        print_elf_header(&elf_file);
-    } else {
-        // Comportement par défaut: tout afficher
-        print_elf_header(&elf_file);
-        print_elf_sections(&elf_file);
-    }
-    
-    // Nettoyage
-    free(elf_file.sections);
-    free(elf_file.section_names);
-    close(elf_file.fd);
-
-    return EXIT_SUCCESS;
+    close(fd);
+    return 0;
 }
